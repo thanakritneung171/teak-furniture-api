@@ -1,0 +1,230 @@
+// Teak furniture production — NEW schema, app-owned (no Trello dependency).
+// Chain: Customer → Order → Product → ProductionTask → WorkSession → TaskEvent(audit).
+// Order and Task are distinct entities; each Product's Task carries its own workflow stage.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  WORKER
+}
+
+enum Priority {
+  NORMAL
+  URGENT
+}
+
+enum FrameSource {
+  IN_HOUSE // ผลิตเอง
+  OUTSOURCED // ซื้อโครงจากภายนอก
+}
+
+enum ImageOwnerType {
+  ORDER
+  PRODUCT
+  TASK
+}
+
+enum EventAction {
+  CREATE
+  STATUS_CHANGE
+  TIMER_START
+  TIMER_STOP
+  ASSIGN
+  NOTE
+}
+
+// พนักงาน / ผู้ใช้ระบบ — login ด้วยเบอร์โทร + รหัส (JWT)
+model User {
+  id           String         @id @default(cuid())
+  name         String
+  phone        String         @unique
+  passwordHash String
+  role         Role           @default(WORKER)
+  stationId    String? // WORKER รับผิดชอบ stage ไหน (null สำหรับ admin/supervisor)
+  station      WorkflowStage? @relation(fields: [stationId], references: [id])
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  assignedTasks ProductionTask[] @relation("TaskAssignee")
+  workSessions  WorkSession[]
+  taskEvents    TaskEvent[]      @relation("EventActor")
+
+  @@index([role])
+  @@index([stationId])
+}
+
+// ขั้นตอนการผลิต (data-driven, เรียงลำดับ): ขึ้นแบบ → รอของ → เก็บงาน → ทำสี → ส่ง → ส่งสำเร็จ
+model WorkflowStage {
+  id         String  @id @default(cuid())
+  code       String  @unique // DESIGN, WAITING, ASSEMBLY, PAINT, SHIP, SHIPPED
+  label      String // ป้ายไทย: ขึ้นแบบ, รอของ, ...
+  sortOrder  Int     @unique
+  isTerminal Boolean @default(false) // ส่งสำเร็จ = จบ workflow
+
+  workers      User[]
+  currentTasks ProductionTask[] @relation("TaskCurrentStage")
+  workSessions WorkSession[]
+  eventsFrom   TaskEvent[]      @relation("EventFromStage")
+  eventsTo     TaskEvent[]      @relation("EventToStage")
+
+  @@index([sortOrder])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+
+  orders Order[]
+}
+
+// คำสั่งซื้อ — ภาพรวม (คนละ entity กับ Task)
+model Order {
+  id              String    @id @default(cuid())
+  orderNumber     String    @unique
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  orderDate       DateTime  @default(now())
+  paidDate        DateTime?
+  dueDate         DateTime?
+  totalPrice      Decimal?  @db.Decimal(14, 2)
+  shippingAddress String?
+  note            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  products Product[]
+
+  @@index([customerId])
+  @@index([dueDate])
+}
+
+// สินค้าใน Order — แต่ละรายการแตกเป็น ProductionTask
+model Product {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  name        String
+  productType String?
+  quantity    Int      @default(1)
+  details     String?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  tasks ProductionTask[]
+
+  @@index([orderId])
+}
+
+// งานผลิตจริง — เดินตาม workflow, จับเวลา, เก็บ audit
+model ProductionTask {
+  id             String        @id @default(cuid())
+  taskNumber     String        @unique
+  productId      String
+  product        Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currentStageId String
+  currentStage   WorkflowStage @relation("TaskCurrentStage", fields: [currentStageId], references: [id])
+  assigneeId     String?
+  assignee       User?         @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  dueDate        DateTime?
+  priority       Priority      @default(NORMAL)
+
+  // core tags (บรีฟ §8.3)
+  region      String? // ภาค: เหนือ/กลาง/อีสาน/ใต้
+  color       String? // สี: Natural/Walnut/...
+  frameSource FrameSource? // แหล่งโครง
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workSessions WorkSession[]
+  events       TaskEvent[]
+  taskTags     TaskTag[]
+
+  @@index([currentStageId])
+  @@index([assigneeId])
+  @@index([priority])
+  @@index([dueDate])
+}
+
+// tag ยืดหยุ่นสำหรับอนาคต (งานพิเศษ/งานเร่ง/ลูกค้าสำคัญ/custom)
+model Tag {
+  id       String    @id @default(cuid())
+  type     String // region | color | frameSource | custom
+  value    String
+  taskTags TaskTag[]
+
+  @@unique([type, value])
+}
+
+model TaskTag {
+  taskId String
+  task   ProductionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    Tag            @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+}
+
+// การจับเวลา — หนึ่งแถวต่อการกด start/stop หนึ่งครั้ง
+model WorkSession {
+  id          String         @id @default(cuid())
+  taskId      String
+  task        ProductionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  stageId     String
+  stage       WorkflowStage  @relation(fields: [stageId], references: [id])
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  startTime   DateTime       @default(now())
+  endTime     DateTime? // null = กำลังทำ
+  durationSec Int?
+  note        String?
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([taskId, endTime])
+}
+
+// audit log — ทุกการเปลี่ยนสถานะ/กด timer
+model TaskEvent {
+  id          String         @id @default(cuid())
+  taskId      String
+  task        ProductionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId     String?
+  actor       User?          @relation("EventActor", fields: [actorId], references: [id])
+  action      EventAction
+  fromStageId String?
+  fromStage   WorkflowStage? @relation("EventFromStage", fields: [fromStageId], references: [id])
+  toStageId   String?
+  toStage     WorkflowStage? @relation("EventToStage", fields: [toStageId], references: [id])
+  detail      String?
+  note        String?
+  createdAt   DateTime       @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+// รูปภาพ (polymorphic) — order/product/task
+model ImageAsset {
+  id        String         @id @default(cuid())
+  ownerType ImageOwnerType
+  ownerId   String
+  url       String
+  isPrimary Boolean        @default(false)
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+
+  @@index([ownerType, ownerId])
+}
