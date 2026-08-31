@@ -1,11 +1,15 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthUser } from '../auth/jwt.strategy';
 import { TasksService } from './tasks.service';
 import { TaskQueryDto } from './dto/task-query.dto';
 import { NoteDto } from './dto/note.dto';
+import { AssignDto } from './dto/assign.dto';
 
 @ApiTags('tasks')
 @ApiBearerAuth()
@@ -59,5 +63,13 @@ export class TasksController {
   @ApiOperation({ summary: 'เสร็จขั้นตอน → เลื่อน workflow ไปขั้นถัดไป' })
   completeStage(@Param('id') id: string, @Body() dto: NoteDto, @CurrentUser() user: AuthUser) {
     return this.tasks.completeStage(id, user.id, dto.note);
+  }
+
+  @Patch(':id/assign')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERVISOR)
+  @ApiOperation({ summary: 'มอบหมายงานให้พนักงาน' })
+  assign(@Param('id') id: string, @Body() dto: AssignDto, @CurrentUser() user: AuthUser) {
+    return this.tasks.assign(id, dto.assigneeId, user.id);
   }
 }

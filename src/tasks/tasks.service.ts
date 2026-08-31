@@ -317,4 +317,30 @@ export class TasksService {
       note: e.note,
     }));
   }
+
+  // มอบหมายงานให้พนักงาน (บรีฟ §15 supervisor) + audit
+  async assign(taskId: string, assigneeId: string, actorId: string) {
+    const task = await this.prisma.productionTask.findUnique({
+      where: { id: taskId },
+      include: { currentStage: true },
+    });
+    if (!task) throw new NotFoundException('ไม่พบงาน');
+    const user = await this.prisma.user.findUnique({ where: { id: assigneeId } });
+    if (!user) throw new NotFoundException('ไม่พบพนักงาน');
+
+    const updated = await this.prisma.productionTask.update({
+      where: { id: taskId },
+      data: { assigneeId },
+    });
+    await this.prisma.taskEvent.create({
+      data: {
+        taskId,
+        actorId,
+        action: EventAction.ASSIGN,
+        toStageId: task.currentStageId,
+        detail: `มอบหมายให้ ${user.name}`,
+      },
+    });
+    return updated;
+  }
 }
