@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EventAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../auth/jwt.strategy';
 import { TaskQueryDto } from './dto/task-query.dto';
 
@@ -20,7 +21,10 @@ function startOfToday(): Date {
 
 @Injectable()
 export class TasksService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   // แปลง task → การ์ดสำหรับ list/board/home
   private toCard(task: any) {
@@ -340,6 +344,14 @@ export class TasksService {
         toStageId: task.currentStageId,
         detail: `มอบหมายให้ ${user.name}`,
       },
+    });
+    // แจ้งเตือนพนักงานที่ถูกมอบหมาย
+    const product = await this.prisma.product.findFirst({ where: { tasks: { some: { id: taskId } } } });
+    await this.notifications.create(assigneeId, {
+      type: 'assigned',
+      title: 'คุณได้รับงานใหม่',
+      message: `${product?.name ?? 'งานผลิต'} (${task.currentStage.label})`,
+      taskId,
     });
     return updated;
   }

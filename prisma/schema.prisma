@@ -58,9 +58,26 @@ model User {
   assignedTasks ProductionTask[] @relation("TaskAssignee")
   workSessions  WorkSession[]
   taskEvents    TaskEvent[]      @relation("EventActor")
+  notifications Notification[]
 
   @@index([role])
   @@index([stationId])
+}
+
+// แจ้งเตือนแบบเก็บถาวรต่อผู้ใช้ (สร้างเมื่อถูกมอบหมายงาน ฯลฯ)
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // assigned | overdue | ...
+  title     String
+  message   String?
+  taskId    String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 // ขั้นตอนการผลิต (data-driven, เรียงลำดับ): ขึ้นแบบ → รอของ → เก็บงาน → ทำสี → ส่ง → ส่งสำเร็จ

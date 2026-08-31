@@ -12,6 +12,9 @@
 # prisma
 prisma/*.db
 
+# uploaded files (runtime)
+/uploads
+
 # logs
 *.log
 npm-debug.log*

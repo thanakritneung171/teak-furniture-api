@@ -6,6 +6,8 @@ import { UsersModule } from './users/users.module';
 import { OrdersModule } from './orders/orders.module';
 import { TasksModule } from './tasks/tasks.module';
 import { MetaModule } from './meta/meta.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { MetaModule } from './meta/meta.module';
     OrdersModule,
     TasksModule,
     MetaModule,
+    NotificationsModule,
+    UploadsModule,
   ],
 })
 export class AppModule {}
