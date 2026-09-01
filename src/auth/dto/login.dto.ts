@@ -1,13 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { Matches } from 'class-validator';
 
 export class LoginDto {
-  @ApiProperty({ example: '0810000001', description: 'เบอร์โทรที่ใช้ login' })
-  @IsString()
-  phone!: string;
-
-  @ApiProperty({ example: 'password' })
-  @IsString()
-  @MinLength(1)
-  password!: string;
+  @ApiProperty({ example: '100005', description: 'PIN 6 หลัก' })
+  @Matches(/^\d{6}$/, { message: 'PIN ต้องเป็นตัวเลข 6 หลัก' })
+  pin!: string;
 }

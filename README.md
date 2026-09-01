@@ -23,13 +23,13 @@ npx prisma migrate dev      # creates the teak_production DB + tables + runs the
 Seed creates the 6 workflow stages, an admin, a supervisor, one worker per stage, and a sample
 order with tasks spread across stages (incl. urgent + overdue).
 
-**Login accounts** (all password `password`):
+**Login** — 6-digit PIN only (no phone/password):
 
-| phone | role | station |
+| PIN | role | station |
 |---|---|---|
-| `0810000000` | ADMIN | — |
-| `0810000001` | SUPERVISOR | — |
-| `0810000002`–`0810000006` | WORKER | ขึ้นแบบ / รอของ / เก็บงาน / ทำสี / ส่ง |
+| `100000` | ADMIN | — |
+| `100001` | SUPERVISOR | — |
+| `100002`–`100006` | WORKER | ขึ้นแบบ / รอของ / เก็บงาน / ทำสี / ส่ง |
 
 ## Run
 
@@ -47,7 +47,7 @@ npm run start:dev      # watch mode
 **Auth / users**
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/auth/login` | phone + password → `{ accessToken, user }` |
+| POST | `/auth/login` | 6-digit PIN `{ pin }` → `{ accessToken, user }` |
 | GET | `/me` | current user |
 | GET | `/users` | list (admin/supervisor) — for assignment |
 | POST | `/users` | create employee (admin) — role/station |

@@ -11,7 +11,12 @@ export class UsersService {
   async create(dto: CreateUserDto) {
     const existing = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
     if (existing) throw new ConflictException('เบอร์นี้ถูกใช้แล้ว');
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    // PIN ต้องไม่ซ้ำกับผู้ใช้อื่น (login ด้วย PIN อย่างเดียว)
+    const actives = await this.prisma.user.findMany({ where: { active: true }, select: { passwordHash: true } });
+    for (const u of actives) {
+      if (await bcrypt.compare(dto.pin, u.passwordHash)) throw new ConflictException('PIN นี้ถูกใช้แล้ว');
+    }
+    const passwordHash = await bcrypt.hash(dto.pin, 10);
     const u = await this.prisma.user.create({
       data: {
         name: dto.name,

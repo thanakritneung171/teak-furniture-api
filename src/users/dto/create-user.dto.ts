@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, Matches } from 'class-validator';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'สมชาย' })
@@ -11,10 +11,9 @@ export class CreateUserDto {
   @IsString()
   phone!: string;
 
-  @ApiProperty({ example: 'password' })
-  @IsString()
-  @MinLength(4)
-  password!: string;
+  @ApiProperty({ example: '100009', description: 'PIN 6 หลัก (ใช้ login)' })
+  @Matches(/^\d{6}$/, { message: 'PIN ต้องเป็นตัวเลข 6 หลัก' })
+  pin!: string;
 
   @ApiProperty({ enum: Role })
   @IsEnum(Role)

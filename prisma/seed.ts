@@ -31,14 +31,12 @@ async function main() {
   const stages: Record<string, any> = {};
   for (const s of STAGES) stages[s.code] = await prisma.workflowStage.create({ data: s });
 
-  const pw = await bcrypt.hash('password', 10);
-
-  // users: 1 admin, 1 supervisor, 1 worker per (non-terminal) stage — all password "password"
+  // users: 1 admin, 1 supervisor, 1 worker per (non-terminal) stage — login ด้วย PIN 6 หลัก
   const admin = await prisma.user.create({
-    data: { name: 'Admin', phone: '0810000000', passwordHash: pw, role: Role.ADMIN },
+    data: { name: 'Admin', phone: '0810000000', passwordHash: await bcrypt.hash('100000', 10), role: Role.ADMIN },
   });
   const supervisor = await prisma.user.create({
-    data: { name: 'หัวหน้าวิชัย', phone: '0810000001', passwordHash: pw, role: Role.SUPERVISOR },
+    data: { name: 'หัวหน้าวิชัย', phone: '0810000001', passwordHash: await bcrypt.hash('100001', 10), role: Role.SUPERVISOR },
   });
   const workerNames: Record<string, string> = {
     DESIGN: 'สมชาย (ขึ้นแบบ)',
@@ -54,7 +52,7 @@ async function main() {
       data: {
         name: workerNames[code],
         phone: '081000000' + idx,
-        passwordHash: pw,
+        passwordHash: await bcrypt.hash('10000' + idx, 10),
         role: Role.WORKER,
         stationId: stages[code].id,
       },
@@ -193,7 +191,7 @@ async function main() {
     assigneeCode: 'PAINT',
   });
 
-  console.log('✓ Seed done — login: 0810000000 (admin) / 0810000004 (worker ทำสี) · password: password');
+  console.log('✓ Seed done — login ด้วย PIN: 100000 (admin) · 100001 (หัวหน้า) · 100002-100006 (พนักงาน ขึ้นแบบ/รอของ/เก็บงาน/ทำสี/ส่ง)');
 }
 
 main()

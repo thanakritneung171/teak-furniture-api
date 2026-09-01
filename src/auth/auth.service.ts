@@ -12,14 +12,19 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { phone: dto.phone },
+    // login ด้วย PIN 6 หลักอย่างเดียว — หา user ที่ PIN ตรง (จำนวนผู้ใช้ในโรงงานไม่มาก)
+    const users = await this.prisma.user.findMany({
+      where: { active: true },
       include: { station: true },
     });
-    if (!user || !user.active) throw new UnauthorizedException('เบอร์หรือรหัสไม่ถูกต้อง');
-
-    const ok = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('เบอร์หรือรหัสไม่ถูกต้อง');
+    let user: (typeof users)[number] | null = null;
+    for (const u of users) {
+      if (await bcrypt.compare(dto.pin, u.passwordHash)) {
+        user = u;
+        break;
+      }
+    }
+    if (!user) throw new UnauthorizedException('PIN ไม่ถูกต้อง');
 
     const accessToken = await this.jwt.signAsync({ sub: user.id, role: user.role });
     return {
