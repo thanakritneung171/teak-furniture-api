@@ -49,20 +49,20 @@ export class TasksController {
 
   @Post(':id/timer/start')
   @ApiOperation({ summary: 'เริ่มจับเวลา' })
-  timerStart(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.tasks.timerStart(id, user.id);
+  timerStart(@Param('id') id: string, @Body() dto: NoteDto, @CurrentUser() user: AuthUser) {
+    return this.tasks.timerStart(id, user.id, { clientId: dto.clientId, at: dto.at });
   }
 
   @Post(':id/timer/stop')
   @ApiOperation({ summary: 'หยุดจับเวลา' })
   timerStop(@Param('id') id: string, @Body() dto: NoteDto, @CurrentUser() user: AuthUser) {
-    return this.tasks.timerStop(id, user.id, dto.note);
+    return this.tasks.timerStop(id, user.id, dto.note, { clientId: dto.clientId, at: dto.at });
   }
 
   @Patch(':id/complete-stage')
   @ApiOperation({ summary: 'เสร็จขั้นตอน → เลื่อน workflow ไปขั้นถัดไป' })
   completeStage(@Param('id') id: string, @Body() dto: NoteDto, @CurrentUser() user: AuthUser) {
-    return this.tasks.completeStage(id, user.id, dto.note);
+    return this.tasks.completeStage(id, user.id, dto.note, { clientId: dto.clientId, at: dto.at });
   }
 
   @Patch(':id/assign')

@@ -10,6 +10,16 @@
   History, Board) · Order flow (Orders, Order Detail, สร้าง Order, เพิ่มสินค้า → auto Task)
 - **Phase 2:** assign งาน · Overview KPI · Board · จัดการพนักงาน · แจ้งเตือน (in-app +
   persisted `/inbox`, สร้างอัตโนมัติตอน assign) · อัปโหลดรูปจริง (`/uploads` + `/images`)
+- **Login PIN 6 หลัก:** เข้าใช้งานด้วย PIN อย่างเดียว (bcrypt ฝั่ง server, match ข้ามผู้ใช้)
+- **PWA (เว็บ):** รันแอปเดียวกันบนเบราว์เซอร์ผ่าน react-native-web + webpack · service worker
+  (Workbox) precache app shell + cache `/api` (NetworkFirst) และ `/uploads` (CacheFirst) →
+  เปิด/อ่านข้อมูลได้ตอนออฟไลน์ · `manifest.webmanifest` + ไอคอน 192/512/180 → ติดตั้งลงจอโฮมได้
+  (ยืนยันบน Chrome จริง: SW ลง, precache ทำงาน, ติดตั้งได้, login PIN ผ่าน)
+- **Offline write + sync (งานพนักงาน):** กด "เริ่ม/หยุด/เสร็จขั้นตอน" ตอนไม่มีเน็ตได้ — เก็บคิว
+  ถาวร (AsyncStorage/localStorage) + อัปเดตจอทันที (optimistic) → กลับมาออนไลน์ค่อยส่งอัตโนมัติ
+  ตามลำดับ (FIFO) · กันซิงค์ซ้ำด้วย `clientId` (idempotency, unique บน `WorkSession`/`TaskEvent`)
+  · บันทึก "เวลาจริงที่กด" (`at`) ไม่ใช่เวลาที่ซิงค์ · หลังซิงค์เสร็จ refetch สถานะจริงจาก server
+  (ยืนยัน end-to-end บน Chrome จริง)
 
 ---
 
@@ -77,3 +87,10 @@
 - Unit/e2e tests (Jest + supertest ฝั่ง API), detox ฝั่ง mobile
 - Production hardening: DB role สิทธิ์ต่ำ (ไม่ใช้ superuser), rate limit, refresh token, logging
 - Build ลงเครื่องจริง (Android Studio + SDK) แล้วทดสอบ device จริง
+- **Offline เพิ่มเติม:** ตอนนี้ queue เฉพาะ action ของพนักงาน (timer start/stop, complete-stage)
+  และโชว์แบนเนอร์ออฟไลน์ที่หน้า Task Detail — ยังเหลือ: (ก) แบนเนอร์ออฟไลน์/pending รวมระดับแอป
+  (แถบบนสุดทุกหน้า) แทนเฉพาะหน้า Task Detail; (ข) queue สำหรับสร้าง Order/สินค้า + assign ตอน
+  ออฟไลน์ (ตอนนี้ต้องออนไลน์); (ค) จัดการ conflict จริงจัง — ตอนนี้ 4xx ระหว่างซิงค์ถูก "ทิ้ง"
+  (dead-letter) กันคิวตัน ควรเก็บ log + แจ้งผู้ใช้ให้ทราบว่ารายการไหนซิงค์ไม่สำเร็จ; (ง) เนทีฟ
+  ยังไม่มี NetInfo (ถือว่าออนไลน์ไว้ก่อน แล้วอาศัย retry จาก error) — ถ้า build เนทีฟจริงควรเพิ่ม
+  `@react-native-community/netinfo` ให้ `isOnline()` แม่นบนมือถือ

@@ -208,6 +208,7 @@ model WorkSession {
   endTime     DateTime? // null = กำลังทำ
   durationSec Int?
   note        String?
+  clientId    String?        @unique // idempotency key จากการกดตอนออฟไลน์ (กันซิงค์ซ้ำ)
 
   @@index([taskId])
   @@index([userId])
@@ -228,6 +229,7 @@ model TaskEvent {
   toStage     WorkflowStage? @relation("EventToStage", fields: [toStageId], references: [id])
   detail      String?
   note        String?
+  clientId    String?        @unique // idempotency key จากการกดตอนออฟไลน์ (กันซิงค์ซ้ำ)
   createdAt   DateTime       @default(now())
 
   @@index([taskId, createdAt])

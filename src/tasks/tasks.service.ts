@@ -19,6 +19,18 @@ function startOfToday(): Date {
   return d;
 }
 
+// ตัวเลือกสำหรับ action ที่อาจถูกกดตอนออฟไลน์แล้วค่อยซิงค์
+export type OfflineOpts = { clientId?: string; at?: string };
+
+// เวลาจริงที่กด (ถ้า client ส่งมา) — ไม่ยอมรับเวลาอนาคต/ค่าพัง, fallback = ตอนนี้
+function parseAt(at?: string): Date {
+  if (!at) return new Date();
+  const d = new Date(at);
+  if (isNaN(d.getTime())) return new Date();
+  const now = Date.now();
+  return d.getTime() > now ? new Date(now) : d;
+}
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -202,35 +214,60 @@ export class TasksService {
   }
 
   // เริ่มจับเวลา (บรีฟ §11) — 1 running session ต่อ task
-  async timerStart(taskId: string, userId: string) {
+  // opts.clientId/at รองรับการกดตอนออฟไลน์แล้วค่อยซิงค์ (idempotent + เวลาจริง)
+  async timerStart(taskId: string, userId: string, opts?: OfflineOpts) {
+    // ซิงค์ซ้ำ: ถ้า session ที่มี clientId นี้ถูกสร้างแล้ว คืนของเดิม (ไม่สร้างซ้ำ)
+    if (opts?.clientId) {
+      const dup = await this.prisma.workSession.findUnique({ where: { clientId: opts.clientId } });
+      if (dup) return dup;
+    }
     const task = await this.prisma.productionTask.findUnique({ where: { id: taskId } });
     if (!task) throw new NotFoundException('ไม่พบงาน');
     const existing = await this.prisma.workSession.findFirst({ where: { taskId, endTime: null } });
     if (existing) throw new BadRequestException('มี timer ที่กำลังทำงานอยู่แล้ว');
 
+    const startTime = parseAt(opts?.at);
     return this.prisma.$transaction(async (tx) => {
       const session = await tx.workSession.create({
-        data: { taskId, stageId: task.currentStageId, userId, startTime: new Date() },
+        data: { taskId, stageId: task.currentStageId, userId, startTime, clientId: opts?.clientId },
       });
       if (!task.assigneeId) {
         await tx.productionTask.update({ where: { id: taskId }, data: { assigneeId: userId } });
       }
       await tx.taskEvent.create({
-        data: { taskId, actorId: userId, action: EventAction.TIMER_START, toStageId: task.currentStageId, detail: 'เริ่มจับเวลา' },
+        data: {
+          taskId,
+          actorId: userId,
+          action: EventAction.TIMER_START,
+          toStageId: task.currentStageId,
+          detail: 'เริ่มจับเวลา',
+          createdAt: startTime,
+        },
       });
       return session;
     });
   }
 
   // หยุดจับเวลา (บรีฟ §12) → ปิด session + คำนวณ duration
-  async timerStop(taskId: string, userId: string, note?: string) {
+  async timerStop(taskId: string, userId: string, note?: string, opts?: OfflineOpts) {
+    // ซิงค์ซ้ำ: ถ้า event หยุดที่มี clientId นี้มีแล้ว → คืน session ที่ปิดไปแล้ว
+    if (opts?.clientId) {
+      const dupEvent = await this.prisma.taskEvent.findUnique({ where: { clientId: opts.clientId } });
+      if (dupEvent) {
+        const closed = await this.prisma.workSession.findFirst({
+          where: { taskId },
+          orderBy: { endTime: 'desc' },
+        });
+        return closed ?? { ok: true };
+      }
+    }
     const session = await this.prisma.workSession.findFirst({
       where: { taskId, endTime: null },
       orderBy: { startTime: 'desc' },
     });
     if (!session) throw new BadRequestException('ไม่มี timer ที่กำลังทำงาน');
 
-    const end = new Date();
+    const end = parseAt(opts?.at);
     const durationSec = Math.max(0, Math.floor((end.getTime() - new Date(session.startTime).getTime()) / 1000));
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.workSession.update({
@@ -245,6 +282,8 @@ export class TasksService {
           toStageId: session.stageId,
           detail: `หยุดจับเวลา ${Math.round(durationSec / 60)} นาที`,
           note,
+          clientId: opts?.clientId,
+          createdAt: end,
         },
       });
       return updated;
@@ -252,7 +291,12 @@ export class TasksService {
   }
 
   // เสร็จขั้นตอน (บรีฟ §13) — ปิด session ที่ค้าง, เขียน audit, เลื่อน stage
-  async completeStage(taskId: string, userId: string, note?: string) {
+  async completeStage(taskId: string, userId: string, note?: string, opts?: OfflineOpts) {
+    // ซิงค์ซ้ำ: ถ้า event เปลี่ยนสถานะที่มี clientId นี้มีแล้ว → คืน task ปัจจุบัน
+    if (opts?.clientId) {
+      const dupEvent = await this.prisma.taskEvent.findUnique({ where: { clientId: opts.clientId } });
+      if (dupEvent) return this.prisma.productionTask.findUnique({ where: { id: taskId } });
+    }
     const task = await this.prisma.productionTask.findUnique({
       where: { id: taskId },
       include: { currentStage: true },
@@ -265,15 +309,15 @@ export class TasksService {
     });
     if (!next) throw new BadRequestException('ไม่มีขั้นตอนถัดไป');
 
+    const at = parseAt(opts?.at);
     return this.prisma.$transaction(async (tx) => {
       const running = await tx.workSession.findFirst({
         where: { taskId, endTime: null },
         orderBy: { startTime: 'desc' },
       });
       if (running) {
-        const end = new Date();
-        const durationSec = Math.max(0, Math.floor((end.getTime() - new Date(running.startTime).getTime()) / 1000));
-        await tx.workSession.update({ where: { id: running.id }, data: { endTime: end, durationSec, note } });
+        const durationSec = Math.max(0, Math.floor((at.getTime() - new Date(running.startTime).getTime()) / 1000));
+        await tx.workSession.update({ where: { id: running.id }, data: { endTime: at, durationSec, note } });
         await tx.taskEvent.create({
           data: {
             taskId,
@@ -281,6 +325,7 @@ export class TasksService {
             action: EventAction.TIMER_STOP,
             toStageId: task.currentStageId,
             detail: `หยุดจับเวลา ${Math.round(durationSec / 60)} นาที`,
+            createdAt: at,
           },
         });
       }
@@ -297,6 +342,8 @@ export class TasksService {
           toStageId: next.id,
           detail: `${task.currentStage.label} → ${next.label}`,
           note,
+          clientId: opts?.clientId,
+          createdAt: at,
         },
       });
       return updated;
