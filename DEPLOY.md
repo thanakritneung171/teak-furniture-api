@@ -15,6 +15,22 @@ VPS ตัวเดิม (ที่รัน emptychair) มี Node + PostgreS
 
 ---
 
+## ทางลัด (แนะนำ): สคริปต์เดียวจบ API + PWA
+
+ถ้า clone ครบ 2 repo แล้ว (ดู §1) — รันสคริปต์เดียวได้เลย ทำ DB + .env + migrate + build +
+systemd + nginx + TLS ให้ทั้ง API และ PWA (idempotent — รันซ้ำตอนอัปเดตได้):
+```bash
+sudo bash /opt/teak-furniture-api/deploy/setup-vps.sh \
+     --api-domain=api.example.com --app-domain=app.example.com
+```
+- เว้น `--app-domain` = ทำเฉพาะ API (+ build PWA ไว้เฉย ๆ) · ใส่ `--skip-pwa` = ไม่แตะ PWA
+- เว้นโดเมนทั้งคู่ = รันบน IP:port (ยังไม่มี TLS — PWA จะยังติดตั้ง/ออฟไลน์ไม่ได้จนกว่าจะมี HTTPS)
+- ตอนจบสคริปต์จะพิมพ์ `DB_PASSWORD` / `JWT_SECRET` ที่สุ่มให้ — เก็บไว้
+
+ด้านล่างคือขั้นตอนแบบ manual (อ้างอิง/แก้ทีละส่วน) ถ้าไม่อยากใช้สคริปต์
+
+---
+
 ## 1. เอาโค้ดขึ้น VPS
 
 repo เป็น private — เลือกวิธีใดวิธีหนึ่ง:
