@@ -56,10 +56,14 @@ else
   WEB_API_ORIGIN="http://${SERVER_IP}:${PORT}"
 fi
 
+# สตริงไว้โชว์ (ternary จริง — เลี่ยง ${:+}${:-} ที่ต่อกันเวลาตัวแปรมีค่า)
+API_URL_DISP="${API_DOMAIN:+https://$API_DOMAIN}"; [ -z "$API_URL_DISP" ] && API_URL_DISP="http://<IP>:$PORT"
+APP_URL_DISP="${APP_DOMAIN:+https://$APP_DOMAIN}"; [ -z "$APP_URL_DISP" ] && APP_URL_DISP="(build only, no nginx)"
+
 echo "==> API dir : $APP_DIR"
 echo "==> APP dir : $APP_DIR_WEB"
-echo "==> API url : ${API_DOMAIN:+https://$API_DOMAIN}${API_DOMAIN:-http://<IP>:$PORT}"
-echo "==> PWA url : ${APP_DOMAIN:+https://$APP_DOMAIN}${APP_DOMAIN:-'(build only, no nginx)'}"
+echo "==> API url : $API_URL_DISP"
+echo "==> PWA url : $APP_URL_DISP"
 echo "==> เว็บจะเรียก API ที่: $WEB_API_ORIGIN"
 cd "$APP_DIR"
 
@@ -88,7 +92,8 @@ ENV
 chmod 600 "$APP_DIR/.env"
 
 echo "==> 3) ติดตั้ง + migrate + build"
-npm ci
+# npm ci ถ้า lock ตรง; ถ้า lock เพี้ยน fallback เป็น npm install (ไม่แตะ lock กัน git conflict)
+npm ci --no-audit --no-fund || npm install --no-audit --no-fund --no-package-lock
 npx prisma migrate deploy
 npm run build
 mkdir -p "$APP_DIR/uploads" && chown -R "$RUN_USER" "$APP_DIR/uploads"
@@ -158,7 +163,7 @@ elif [ ! -d "$APP_DIR_WEB" ]; then
 else
   echo "==> 6) build PWA (ชี้ API ที่ $WEB_API_ORIGIN)"
   cd "$APP_DIR_WEB"
-  npm ci
+  npm ci --no-audit --no-fund || npm install --no-audit --no-fund --no-package-lock
   TEAK_API_ORIGIN="$WEB_API_ORIGIN" npm run build:web
   echo "   ได้ไฟล์ static ที่ $APP_DIR_WEB/dist-web"
 
@@ -192,10 +197,9 @@ fi
 # =====================  สรุป  =====================
 echo ""
 echo "======================================================"
-echo " API : ${API_DOMAIN:+https://$API_DOMAIN/api}${API_DOMAIN:-http://<IP>:$PORT/api}"
-[ -n "$API_DOMAIN" ] && echo " Docs: https://${API_DOMAIN}/docs"
+if [ -n "$API_DOMAIN" ]; then echo " API : https://${API_DOMAIN}/api"; echo " Docs: https://${API_DOMAIN}/docs"; else echo " API : http://<IP>:$PORT/api"; fi
 if [ "$SKIP_PWA" != "1" ] && [ -d "$APP_DIR_WEB" ]; then
-  echo " PWA : ${APP_DOMAIN:+https://$APP_DOMAIN}${APP_DOMAIN:-$APP_DIR_WEB/dist-web (ยังไม่ตั้ง nginx)}"
+  if [ -n "$APP_DOMAIN" ]; then echo " PWA : https://${APP_DOMAIN}"; else echo " PWA : $APP_DIR_WEB/dist-web (ยังไม่ตั้ง nginx)"; fi
 fi
 echo " ----"
 echo " DB_USER=${DB_USER}"
