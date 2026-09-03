@@ -3,8 +3,10 @@
 ระบบมี 2 ส่วนที่ deploy คนละแบบ:
 
 - **API (`teak-furniture-api`)** — รันเป็น Node service บน VPS (หลัง nginx + TLS) ต่อ PostgreSQL
-- **แอปมือถือ (`teak-furniture-app`)** — build เป็น APK/AAB แล้วชี้มาที่ URL ของ API บน VPS
-  (แอป **ไม่ได้** ติดตั้งบน VPS — VPS โฮสต์แค่ API)
+- **แอป (`teak-furniture-app`)** — deploy ได้ 2 แบบ (เลือกอย่างใดอย่างหนึ่งหรือทั้งคู่):
+  - **PWA (เว็บ) — แนะนำ:** build เป็นไฟล์ static (`dist-web`) แล้วให้ nginx เสิร์ฟ →
+    คนเปิด URL บนมือถือแล้ว "เพิ่มลงจอโฮม" ใช้ได้เลย **ไม่ต้อง build APK / ไม่ต้องมี Android Studio**
+  - **APK/AAB (เนทีฟ):** build บนเครื่องที่มี Android Studio/SDK แล้วแจกไฟล์ (ดู §8)
 
 VPS ตัวเดิม (ที่รัน emptychair) มี Node + PostgreSQL + nginx อยู่แล้ว — teak API รันคู่ขนานได้
 โดยใช้ **DB ใหม่ + port ใหม่ (:4000) + nginx server block ใหม่** ไม่กระทบของเดิม
@@ -119,13 +121,44 @@ sudo certbot --nginx -d api.example.com     # ออก TLS ให้อัต�
 > ถ้ายังไม่มีโดเมน: ใช้ `http://202.183.141.213:4000/api` ชั่วคราวได้ (เปิด firewall port 4000)
 > แต่ควรมี TLS ก่อนใช้จริง เพราะมี JWT/รูป
 
-## 7. แอปมือถือ — ชี้มาที่ VPS แล้ว build APK
+## 7. แอปเว็บ (PWA) — host บน VPS (แนะนำ)
 
-แก้ `teak-furniture-app/src/api/client.ts`:
-```ts
-export const API_ORIGIN = 'https://api.example.com';   // แทน 10.0.2.2/localhost
+build ตัวเว็บโดยชี้ API origin ไปที่โดเมน API (ผ่าน env ตอน build — ไม่ต้องแก้โค้ด):
+```bash
+# clone แอปขึ้น VPS เหมือน §1 (หรือ build บนเครื่อง dev แล้ว scp เฉพาะ dist-web ขึ้นไป)
+cd /opt/teak-furniture-app
+npm ci
+TEAK_API_ORIGIN="https://api.example.com" npm run build:web   # ได้โฟลเดอร์ dist-web/
 ```
-แล้ว build (บนเครื่องที่มี Android Studio/SDK):
+> ถ้ายังไม่มีโดเมน ใช้ IP ได้: `TEAK_API_ORIGIN="http://202.183.141.213:4000"` (ควรมี TLS ก่อนใช้จริง)
+
+nginx server block ใหม่ (คนละโดเมน/subdomain กับ API เช่น `app.example.com`):
+`/etc/nginx/sites-available/teak-app`:
+```nginx
+server {
+  server_name app.example.com;
+  root /opt/teak-furniture-app/dist-web;
+  location / {
+    try_files $uri /index.html;          # SPA fallback
+  }
+  # service worker ต้องไม่ถูก cache นาน (จะได้เห็นเวอร์ชันใหม่)
+  location = /service-worker.js { add_header Cache-Control "no-cache"; }
+}
+```
+```bash
+sudo ln -s /etc/nginx/sites-available/teak-app /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d app.example.com      # ต้องมี HTTPS — PWA/Service Worker ใช้ได้เฉพาะบน https (หรือ localhost)
+```
+เปิด `https://app.example.com` บนมือถือ → เมนูเบราว์เซอร์ → "เพิ่มลงในหน้าจอโฮม" → ใช้เป็นแอปได้เลย
+
+> **สำคัญ:** PWA/Service Worker ทำงานเฉพาะบน **HTTPS** (หรือ localhost) — ต้องออก TLS ก่อน ไม่งั้น
+> ออฟไลน์/ติดตั้งจะไม่ทำงาน · CORS ฝั่ง API เปิดหมดอยู่แล้ว (`enableCors()`) จึงเรียกข้ามโดเมนได้
+
+## 8. แอปมือถือเนทีฟ (APK) — ทางเลือก ถ้าอยากได้ไฟล์ติดตั้ง
+
+ถ้าจะแจกเป็น APK แทน/เพิ่มเติมจาก PWA — build บนเครื่องที่มี Android Studio/SDK
+(ชี้ API ผ่าน env เดียวกันไม่ได้เพราะเนทีฟไม่ผ่าน webpack — แก้ `client.ts` ค่า native หรือใส่ค่าคงที่):
 ```bash
 cd teak-furniture-app/android
 ./gradlew assembleRelease        # ได้ app/build/outputs/apk/release/app-release.apk
@@ -136,11 +169,16 @@ cd teak-furniture-app/android
 ## อัปเดตรอบถัดไป
 
 ```bash
+# API
 cd /opt/teak-furniture-api && git pull
 npm ci && npx prisma migrate deploy && npm run build
 sudo systemctl restart teak-api
+# PWA (ถ้าใช้)
+cd /opt/teak-furniture-app && git pull
+npm ci && TEAK_API_ORIGIN="https://api.example.com" npm run build:web
+# nginx เสิร์ฟ dist-web อยู่แล้ว — reload ไม่จำเป็น (แต่ผู้ใช้ต้องรีเฟรชให้ service worker อัปเดต)
 ```
-ฝั่งแอป: build APK ใหม่แล้วแจกใหม่ (หรือใช้ CodePush/OTA ในอนาคต)
+ฝั่ง APK (ถ้าใช้): build ใหม่แล้วแจกใหม่ (หรือใช้ CodePush/OTA ในอนาคต)
 
 ## หมายเหตุ
 
