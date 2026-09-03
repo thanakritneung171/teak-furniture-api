@@ -90,6 +90,7 @@ JWT_EXPIRES_IN="7d"
 PORT=${PORT}
 ENV
 chmod 600 "$APP_DIR/.env"
+chown "$RUN_USER" "$APP_DIR/.env"   # ให้ service (RUN_USER) อ่าน .env ได้ (กัน EACCES ตอน service เป็น www-data)
 
 echo "==> 3) ติดตั้ง + migrate + build"
 # npm ci ถ้า lock ตรง; ถ้า lock เพี้ยน fallback เป็น npm install (ไม่แตะ lock กัน git conflict)
