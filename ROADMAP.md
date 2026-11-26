@@ -20,6 +20,12 @@
   ตามลำดับ (FIFO) · กันซิงค์ซ้ำด้วย `clientId` (idempotency, unique บน `WorkSession`/`TaskEvent`)
   · บันทึก "เวลาจริงที่กด" (`at`) ไม่ใช่เวลาที่ซิงค์ · หลังซิงค์เสร็จ refetch สถานะจริงจาก server
   (ยืนยัน end-to-end บน Chrome จริง)
+- **ไมเกรทข้อมูลจาก Trello → DB ใหม่:** pipeline 2 ขั้นใน `prisma/import/` (fetch REST → snapshot →
+  import แบบ idempotent) · แมปบอร์ด→stage, label→สี/ภาค/แหล่งโครง (ไม่รู้จัก→custom tag), แยกชื่อ/
+  จำนวน/ขนาด/ช่องทาง/โค้ดจากชื่อการ์ด (เก็บ raw เสมอ, ไม่มั่นใจ→ว่าง+รายงาน), คอมเมนต์→NOTE, ย้าย
+  บอร์ด→STATUS_CHANGE, ที่อยู่/เบอร์จากคอมเมนต์ · กัน import ซ้ำด้วยตาราง `ExternalRef` · โหมด
+  `--dry-run`/`--commit` + `import-report.md` (ยืนยัน end-to-end บน DB ทดสอบ: parse/label/ที่อยู่/
+  timeline/idempotency ถูกต้อง) — ดู `prisma/import/README.md`
 
 ---
 
@@ -87,6 +93,10 @@
 - Unit/e2e tests (Jest + supertest ฝั่ง API), detox ฝั่ง mobile
 - Production hardening: DB role สิทธิ์ต่ำ (ไม่ใช้ superuser), rate limit, refresh token, logging
 - Build ลงเครื่องจริง (Android Studio + SDK) แล้วทดสอบ device จริง
+- **ไมเกรท Trello เก็บงานต่อ:** (ก) เติม `TRELLO_MEMBER_TO_USER_PHONE` ใน `prisma/import/mapping.ts`
+  ให้ครบ (จากรายงาน "คนที่แมปไม่ได้") แล้วรัน `--commit` ซ้ำเพื่อ backfill actor; (ข) โหลดรูป
+  attachment จาก Trello (ต้องใช้ token) มา re-host เข้า `/uploads` แทนการเก็บ URL ดิบ; (ค) รีวิว
+  รายการ parse ที่ไม่มั่นใจใน `import-report.md` (จำนวนที่เดา=1, ชื่อ/ประเภทที่ว่าง)
 - **Offline เพิ่มเติม:** ตอนนี้ queue เฉพาะ action ของพนักงาน (timer start/stop, complete-stage)
   และโชว์แบนเนอร์ออฟไลน์ที่หน้า Task Detail — ยังเหลือ: (ก) แบนเนอร์ออฟไลน์/pending รวมระดับแอป
   (แถบบนสุดทุกหน้า) แทนเฉพาะหน้า Task Detail; (ข) queue สำหรับสร้าง Order/สินค้า + assign ตอน

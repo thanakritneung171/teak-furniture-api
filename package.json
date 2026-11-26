@@ -10,7 +10,9 @@
     "start:prod": "node dist/main.js",
     "prisma:generate": "prisma generate",
     "migrate": "prisma migrate dev",
-    "seed": "prisma db seed"
+    "seed": "prisma db seed",
+    "import:fetch": "ts-node prisma/import/fetch-trello.ts",
+    "import:trello": "ts-node prisma/import/import-trello.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

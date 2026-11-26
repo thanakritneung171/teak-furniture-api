@@ -15,6 +15,9 @@ prisma/*.db
 # uploaded files (runtime)
 /uploads
 
+# Trello import snapshots (raw exports may contain customer PII)
+/data
+
 # logs
 *.log
 npm-debug.log*

@@ -247,3 +247,17 @@ model ImageAsset {
 
   @@index([ownerType, ownerId])
 }
+
+// แผนที่จาก id ระบบภายนอก (เช่น Trello card/comment/action) → row ที่ import เข้ามา
+// ใช้กันการนำเข้าซ้ำ (idempotent) และให้รัน migration ก้อนใหญ่ resume ได้ ไม่ผูก FK เพื่อความยืดหยุ่น
+model ExternalRef {
+  id         String   @id @default(cuid())
+  source     String // "trello"
+  externalId String // เช่น Trello card id / comment action id
+  entityType String // customer | order | product | task | event | image | workSession
+  entityId   String // id ของ row ในระบบใหม่
+  createdAt  DateTime @default(now())
+
+  @@unique([source, externalId, entityType])
+  @@index([entityType, entityId])
+}
